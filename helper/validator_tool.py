@@ -16,7 +16,12 @@ class ValidatorTool(BaseTool):
         "Performs prompt, date, participant, and timeslot validations for meeting scheduling."
     )
 
-    def _run(self, title: str, natural_date: str, participants: List[str], prompt: str):
+    def _run(
+        self,
+        natural_date: str,
+        participants: List[str],
+        prompt: str,
+    ):
         print("[ValidatorTool] TOOL STARTED")
         start = time.time()
 
@@ -67,10 +72,10 @@ class ValidatorTool(BaseTool):
                 1. 'duration_minutes' – int (e.g., 30, 60)
                 2. preferred_half (e.g., morning, afternoon, full, first, second etc.)
                 If not present, default to 60 minutes and 'full'.
-                ONLY respond in this JSON format:
-                {\n  \"duration_minutes\": <int>,\n  \"preferred_half\": \"<part>\"\n}
+                Return only this JSON:
+                {\n  "duration_minutes": <int>,\n  "preferred_half": "<part>"\n}
                 """
-                response = llm.invoke(f"Prompt: {prompt}\n{system_instruction}")
+                response = llm.invoke(f"{system_instruction}\nPrompt: {prompt}")
                 parsed = json.loads(response.content)
                 return {
                     "duration_minutes": int(parsed.get("duration_minutes", 60)),
@@ -78,6 +83,28 @@ class ValidatorTool(BaseTool):
                 }
             except:
                 return {"duration_minutes": 60, "preferred_half": "full"}
+
+        def extract_details(prompt):
+            try:
+                system_instruction = """
+                Extract exactly:
+                1. 'intent' – one of: "schedule", "reschedule", "cancel"
+                (If unclear, default to "schedule")
+                2. 'title' – a concise meeting title
+                - DO NOT return the full prompt.
+                - Infer the topic or type of meeting, e.g. "Project Sync", "Design Review", "Team Catch-Up", "Client Call"
+                - If no specific title is clear, use "<intent> Meeting", where intent is capitalized.
+                Return only this JSON:
+                {\n"intent": "<schedule|reschedule|cancel>",\n"title": "<short meeting title>"\n}
+                """
+                response = llm.invoke(f"{system_instruction}\nPrompt: {prompt}")
+                parsed = json.loads(response.content)
+                return {
+                    "intent": parsed.get("intent", "schedule").lower(),
+                    "title": parsed.get("title", "Schedule Meeting").strip(),
+                }
+            except:
+                return {"intent": "schedule", "title": "Schedule Meeting"}
 
         def generate_slots(preferred_half, duration):
             part_map = {
@@ -115,6 +142,11 @@ class ValidatorTool(BaseTool):
             if prompt_result.get("status") != "VALID":
                 return json.dumps({"status": "INVALID", "reason": "Prompt not valid"})
 
+            # Step 5: Extract other usefull details
+            details = extract_details(prompt)
+            if details["intent"].lower() != "schedule":
+                return json.dumps({"status": "VAILD", "intent": details["intent"]})
+
             # Step 2: Participants
             participants_result = json.loads(validate_participants_list(participants))
             if participants_result.get("status") != "VALID":
@@ -138,7 +170,8 @@ class ValidatorTool(BaseTool):
                 {
                     "status": "VALID",
                     "meeting_info": {
-                        "title": title,
+                        "intent": details["intent"],
+                        "title": details["title"],
                         "date": date_result["parsedDate"],
                         "participants": participants,
                         "participant_emails": participants_result["participant_emails"],

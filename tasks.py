@@ -13,14 +13,12 @@ from tools import (
 validate_task = Task(
     name="Validate Prompt Relevance",
     description=(
-        f"You are a strict validator for Microsoft Outlook meeting scheduling prompts.\n\n"
+        "You are a strict validator for Microsoft Outlook meeting scheduling prompts.\n\n"
         "Instructions:\n"
         "Analyze the prompt and check if it is related to scheduling a meeting in Microsoft Outlook.\n"
         "- Extract:\n"
-        "  - meeting title — either extracted or inferred from the prompt. If not explicitly mentioned, infer intelligently based on intent (e.g., sync, catch-up, discussion)\n\n"
         "  - participants (full names)\n"
         "  - natural date (e.g., 'next Monday')\n"
-        "  - natural time (e.g., '5pm')\n\n"
         " You must call the `validator_main_tool(prompt, natural_date, participants)` tool exactly once to perform all validations.\n\n"
         " **Output ONLY the result from the tool.**"
         "**Important:**"
@@ -67,7 +65,6 @@ meeting_scheduler_task = Task(
         "**Return only the final JSON — no notes or markdown.**"
     ),
     expected_output="A structured JSON only as per the tool.",
-    context=[human_confirmation_task],
     agent=meeting_scheduler_agent,
     tools=[meeting_scheduler_tool],
     output_key="final_invite_sent",

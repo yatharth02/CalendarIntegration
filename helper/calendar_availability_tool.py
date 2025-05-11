@@ -28,6 +28,9 @@ class CalendarAvailabilityTool(BaseTool):
             participant_emails = meeting_info["participant_emails"]
             timeslots = meeting_info["timeslots"]
             date = meeting_info["date"]
+            intent = meeting_info["intent"]
+            if intent.lower() != "schedule":
+                return json.dumps(data_dict)
 
             creds = None
             if os.path.exists("token.json"):

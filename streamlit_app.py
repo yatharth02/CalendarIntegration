@@ -37,7 +37,7 @@ if st.button("Run Meeting Scheduler"):
                     result if isinstance(result, dict) else ast.literal_eval(result)
                 )
             except Exception as e:
-                st.error("Failed to parse result.")
+                st.error("Failed to parse result. Please RETRY!!!")
                 st.code(result)
                 st.stop()
 
@@ -46,7 +46,7 @@ if st.button("Run Meeting Scheduler"):
                 st.error("Prompt is not related to Outlook meeting scheduling.")
             elif not result_json.get("meeting_info", {}).get("freetimeslots"):
                 st.warning("No available time slots found.")
-            else:
+            elif result_json["meeting_info"]["intent"].lower() == "schedule":
                 st.session_state.validated_result = result_json
                 st.session_state.slots = result_json["meeting_info"]["freetimeslots"]
                 st.session_state.selected_slot = st.session_state.slots[0]
