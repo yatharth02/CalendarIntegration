@@ -39,9 +39,9 @@ calendar_availability_agent = Agent(
     allow_delegation=False,
 )
 
-# Agent 4: Meeting Scheduler Agent
-meeting_scheduler_agent = Agent(
-    name="MeetingSchedulerAgent",
+# Agent 4: Calendar Event Manager Agent
+calendar_event_manager_agent = Agent(
+    name="Calendar Event Manager Agent",
     role="Calendar Event Manager",
     goal="Schedule, reschedule, or cancel meetings using Google Calendar integration.",
     description=(

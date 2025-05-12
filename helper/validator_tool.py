@@ -24,33 +24,41 @@ class ValidatorTool(BaseTool):
     ):
         print("[ValidatorTool] TOOL STARTED")
         start = time.time()
+        global llm
+        llm = ChatOpenAI(
+            model_name="gpt-4o-mini-2024-07-18",
+            openai_api_key=os.getenv("OPENAI_API_KEY"),
+            temperature=0,
+        )
 
-        def validate_strict_outlook_prompt(prompt):
-            system_instruction = """
-            You are a validator that checks if a given prompt is strictly related to Microsoft Outlook meeting scheduling.
-            If the prompt contains references to scheduling, setting up meetings, checking calendar availability, or inviting participants — it is VALID.
-            ONLY return JSON like: { "status": "VALID" } or { "status": "INVALID", "reason": "..." }
-            """
-            full_prompt = f"{system_instruction}\n\nPrompt: {prompt}"
+        def llm_json(prompt_text):
             try:
-                response = llm.invoke(full_prompt)
-                return response.content
+                response = llm.invoke(prompt_text)
+                content = response.content
+                return json.loads(content)
             except Exception as e:
-                return json.dumps({"status": "INVALID", "reason": str(e)})
+                return {"status": "INVALID", "reason": str(e)}
 
-        def validate_meeting_date(natural_date):
-            cal = parsedatetime.Calendar()
-            date_struct, status = cal.parse(natural_date.strip())
-            if status <= 0:
-                return json.dumps({"status": "INVALID"})
-            dt = datetime(*date_struct[:3])
-            if dt.weekday() >= 5:
-                return json.dumps({"status": "INVALID"})
-            return json.dumps(
-                {"status": "VALID", "parsedDate": dt.strftime("%Y-%m-%d")}
+        def validate_prompt(prompt):
+            return llm_json(
+                f"""
+                Check if the prompt is related to Outlook meeting scheduling.
+                Return only: {{ "status": "VALID" }} or {{ "status": "INVALID", "reason": "..." }}
+                Prompt: {prompt}
+                """
             )
 
-        def validate_participants_list(participants):
+        def validate_date(natural_date):
+            cal = parsedatetime.Calendar()
+            date_struct, status = cal.parse(natural_date.strip())
+            if status <= 0 or datetime(*date_struct[:3]).weekday() >= 5:
+                return {"status": "INVALID"}
+            return {
+                "status": "VALID",
+                "parsedDate": datetime(*date_struct[:3]).strftime("%Y-%m-%d"),
+            }
+
+        def validate_participants(participants):
             try:
                 test_users = json.load(open(TEST_USER_FILE))["test_users"]
                 matched = [
@@ -60,51 +68,42 @@ class ValidatorTool(BaseTool):
                     if p.lower() in name.lower()
                 ]
                 if len(matched) != len(participants):
-                    return json.dumps({"status": "INVALID", "missing": participants})
-                return json.dumps({"status": "VALID", "participant_emails": matched})
+                    return {"status": "INVALID", "missing": participants}
+                return {"status": "VALID", "participant_emails": matched}
             except Exception as e:
-                return json.dumps({"status": "INVALID", "error": str(e)})
+                return {"status": "INVALID", "error": str(e)}
 
-        def extract_duration_and_half(prompt):
-            try:
-                system_instruction = """
+        def extract_duration_half(prompt):
+            data = llm_json(
+                f"""
                 Extract:
-                1. 'duration_minutes' – int (e.g., 30, 60)
-                2. preferred_half (e.g., morning, afternoon, full, first, second etc.)
-                If not present, default to 60 minutes and 'full'.
-                Return only this JSON:
-                {\n  "duration_minutes": <int>,\n  "preferred_half": "<part>"\n}
+                1. 'duration_minutes' (int)
+                2. 'preferred_half' (e.g., morning, afternoon, full)
+                Return: {{ "duration_minutes": ..., "preferred_half": "..." }}
+                Prompt: {prompt}
                 """
-                response = llm.invoke(f"{system_instruction}\nPrompt: {prompt}")
-                parsed = json.loads(response.content)
-                return {
-                    "duration_minutes": int(parsed.get("duration_minutes", 60)),
-                    "preferred_half": parsed.get("preferred_half", "full").lower(),
-                }
-            except:
-                return {"duration_minutes": 60, "preferred_half": "full"}
+            )
+            return {
+                "duration_minutes": int(data.get("duration_minutes", 60)),
+                "preferred_half": data.get("preferred_half", "full").lower(),
+            }
 
         def extract_details(prompt):
-            try:
-                system_instruction = """
-                Extract exactly:
-                1. 'intent' – one of: "schedule", "reschedule", "cancel"
-                (If unclear, default to "schedule")
-                2. 'title' – a concise meeting title
-                - DO NOT return the full prompt.
-                - Infer the topic or type of meeting, e.g. "Project Sync", "Design Review", "Team Catch-Up", "Client Call"
-                - If no specific title is clear, use "<intent> Meeting", where intent is capitalized.
-                Return only this JSON:
-                {\n"intent": "<schedule|reschedule|cancel>",\n"title": "<short meeting title>"\n}
+            data = llm_json(
+                f"""
+                Extract:
+                1. 'intent' – "schedule", "reschedule", or "cancel" (default: "schedule")
+                2. 'title' – concise meeting title
+                Return: {{ "intent": "...", "title": "..." }}
+                Prompt: {prompt}
                 """
-                response = llm.invoke(f"{system_instruction}\nPrompt: {prompt}")
-                parsed = json.loads(response.content)
-                return {
-                    "intent": parsed.get("intent", "schedule").lower(),
-                    "title": parsed.get("title", "Schedule Meeting").strip(),
-                }
-            except:
-                return {"intent": "schedule", "title": "Schedule Meeting"}
+            )
+            # 3. 'reason' – reason for meeting action , "reason": "..."
+            return {
+                "intent": data.get("intent", "schedule").lower(),
+                "title": data.get("title", "Schedule Meeting").strip(),
+                # "reason": data.get("reason", "").strip(),
+            }
 
         def generate_slots(preferred_half, duration):
             part_map = {
@@ -118,49 +117,71 @@ class ValidatorTool(BaseTool):
             if preferred_half not in part_map:
                 return []
             start_hr, end_hr = part_map[preferred_half]
-            fmt = "%H:%M"
-            current = datetime.strptime(f"{start_hr}:00", fmt)
-            end = datetime.strptime(f"{end_hr}:00", fmt)
-            slots = []
-            while current + timedelta(minutes=duration) <= end:
-                slot_end = current + timedelta(minutes=duration)
-                slots.append(f"{current.strftime(fmt)}–{slot_end.strftime(fmt)}")
-                current = slot_end
-            return slots
-
-        # Init LLM
-        global llm
-        llm = ChatOpenAI(
-            model_name="gpt-4o-mini-2024-07-18",
-            openai_api_key=os.getenv("OPENAI_API_KEY"),
-            temperature=0,
-        )
+            current = datetime.strptime(f"{start_hr}:00", "%H:%M")
+            end = datetime.strptime(f"{end_hr}:00", "%H:%M")
+            return [
+                f"{current.strftime('%H:%M')}–{(current + timedelta(minutes=duration)).strftime('%H:%M')}"
+                for _ in range((end.hour - start_hr) * 60 // duration)
+                if not (current := current + timedelta(minutes=duration)) > end
+            ]
 
         try:
             # Step 1: Prompt
-            prompt_result = json.loads(validate_strict_outlook_prompt(prompt))
-            if prompt_result.get("status") != "VALID":
+            if validate_prompt(prompt).get("status") != "VALID":
                 return json.dumps({"status": "INVALID", "reason": "Prompt not valid"})
 
-            # Step 5: Extract other usefull details
+            # Step 2: Extract other usefull details
             details = extract_details(prompt)
-            if details["intent"].lower() != "schedule":
-                return json.dumps({"status": "VAILD", "intent": details["intent"]})
+            intent = details["intent"]
 
-            # Step 2: Participants
-            participants_result = json.loads(validate_participants_list(participants))
+            # Step 3: Participants
+            participants_result = validate_participants(participants)
             if participants_result.get("status") != "VALID":
                 return json.dumps(
                     {"status": "INVALID", "reason": "Participants invalid"}
                 )
 
-            # Step 3: Date
-            date_result = json.loads(validate_meeting_date(natural_date))
+            if (
+                len(participants_result["participant_emails"]) <= 1
+                and intent != "cancel"
+            ):
+                return json.dumps(
+                    {"status": "INVALID", "reason": "Minimum 2 participants required"}
+                )
+            if (
+                len(participants_result["participant_emails"]) != 1
+                and intent == "cancel"
+            ):
+                return json.dumps(
+                    {
+                        "status": "INVALID",
+                        "reason": "Only 1 participant allowed for cancel",
+                    }
+                )
+
+            # Step 4: Date
+            date_result = validate_date(natural_date)
             if date_result.get("status") != "VALID":
                 return json.dumps({"status": "INVALID", "reason": "Date invalid"})
 
-            # Step 4: Duration and Time Window
-            parsed = extract_duration_and_half(prompt)
+            if intent == "cancel":
+                return json.dumps(
+                    {
+                        "status": "VALID",
+                        "meeting_info": {
+                            "intent": intent,
+                            "date": date_result["parsedDate"],
+                            "participants": participants,
+                            "participant_emails": participants_result[
+                                "participant_emails"
+                            ],
+                            # "reason": details["reason"],
+                        },
+                    }
+                )
+
+            # Step 5: Duration and Time Window
+            parsed = extract_duration_half(prompt)
             slots = generate_slots(parsed["preferred_half"], parsed["duration_minutes"])
             if not slots:
                 return json.dumps({"status": "INVALID", "reason": "No valid timeslots"})
@@ -170,7 +191,7 @@ class ValidatorTool(BaseTool):
                 {
                     "status": "VALID",
                     "meeting_info": {
-                        "intent": details["intent"],
+                        "intent": intent,
                         "title": details["title"],
                         "date": date_result["parsedDate"],
                         "participants": participants,
@@ -178,10 +199,12 @@ class ValidatorTool(BaseTool):
                         "duration_minutes": parsed["duration_minutes"],
                         "preferred_half": parsed["preferred_half"],
                         "timeslots": slots,
+                        # "reason": details["reason"],
                     },
                 }
             )
-
+        except:
+            return json.dumps({"status": "INVALID", "reason": "Internal issues"})
         finally:
             print(f"[ValidatorTool] Took {round(time.time() - start, 2)}s")
 

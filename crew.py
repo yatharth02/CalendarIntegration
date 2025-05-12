@@ -2,12 +2,12 @@ from crewai import Crew
 from agents import (
     validator_agent,
     calendar_availability_agent,
-    meeting_scheduler_agent,
+    calendar_event_manager_agent,
 )
 from tasks import (
     validate_task,
     calendar_availability_task,
-    meeting_scheduler_task,
+    calendar_event_manager_task,
 )
 
 
@@ -29,13 +29,15 @@ def kickoff_meeting_prompt_validation(prompt: str):
 
 
 def kickoff_meeting_creation(input_data: str):
-    """Step 2: Use 1 agent to create the meeting using validated input."""
-    meeting_scheduler_task.description = (
-        f"Create the meeting with this meeting_info: {input_data}"
+    """Step 2: Use 1 agent to create/cancel the meeting using validated input."""
+    calendar_event_manager_task.description = (
+        f"Create/Cancel the meeting with this meeting_info: {input_data}"
     )
 
     crew = Crew(
-        agents=[meeting_scheduler_agent], tasks=[meeting_scheduler_task], verbose=2
+        agents=[calendar_event_manager_agent],
+        tasks=[calendar_event_manager_task],
+        verbose=2,
     )
 
     result = crew.kickoff()

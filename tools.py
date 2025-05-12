@@ -1,7 +1,7 @@
 from helper.validator_tool import ValidatorTool
 from helper.calendar_availability_tool import CalendarAvailabilityTool
-from helper.meeting_scheduler_tool import MeetingSchedulerTool
+from helper.calendar_event_manager_tool import CalendarEventManagerTool
 
 validator_tool = ValidatorTool(return_direct=True)
 calendar_availability_tool = CalendarAvailabilityTool(return_direct=True)
-meeting_scheduler_tool = MeetingSchedulerTool(return_direct=True)
+calendar_event_manager_tool = CalendarEventManagerTool(return_direct=True)
