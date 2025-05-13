@@ -1,12 +1,18 @@
 from crewai import Agent
 from langchain.chat_models import ChatOpenAI
 import os
+from langchain_google_genai import ChatGoogleGenerativeAI
+from dotenv import load_dotenv
 
-llm = ChatOpenAI(
-    model_name="gpt-4o-mini-2024-07-18",
-    openai_api_key=os.getenv("OPENAI_API_KEY"),
-    temperature=0,
-)
+load_dotenv()
+# llm = ChatOpenAI(
+#     model_name="gpt-4o-mini-2024-07-18",
+#     openai_api_key=os.getenv("OPENAI_API_KEY"),
+#     temperature=0,
+# )
+
+os.environ["GOOGLE_API_KEY"] = os.getenv("GOOGLE_API_KEY")
+llm = ChatGoogleGenerativeAI(model="models/gemini-1.5-flash-latest")
 
 # Agent 1: Unified Validator Agent
 validator_agent = Agent(
@@ -23,6 +29,8 @@ validator_agent = Agent(
         "from prompt intent to policy checks is handled before availability lookup and scheduling happens."
     ),
     allow_delegation=False,
+    llm=llm,
+    cache=True,
 )
 
 # Agent 2: Calendar Availability Agent
@@ -37,9 +45,10 @@ calendar_availability_agent = Agent(
         "You're the calendar coordination specialist who ensures the meeting can be scheduled when everyone is free."
     ),
     allow_delegation=False,
+    llm=llm,
 )
 
-# Agent 4: Calendar Event Manager Agent
+# Agent 3: Calendar Event Manager Agent
 calendar_event_manager_agent = Agent(
     name="Calendar Event Manager Agent",
     role="Calendar Event Manager",
@@ -51,4 +60,5 @@ calendar_event_manager_agent = Agent(
         "You're the calendar operator responsible for creating accurate and timely events for all participants."
     ),
     allow_delegation=False,
+    llm=llm,
 )

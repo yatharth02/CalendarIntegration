@@ -42,7 +42,7 @@ class ValidatorTool(BaseTool):
         def validate_prompt(prompt):
             return llm_json(
                 f"""
-                Check if the prompt is related to Outlook meeting scheduling.
+                Determine if the prompt is related to scheduling, rescheduling, or cancelling a meeting in Microsoft Outlook.
                 Return only: {{ "status": "VALID" }} or {{ "status": "INVALID", "reason": "..." }}
                 Prompt: {prompt}
                 """
@@ -98,11 +98,9 @@ class ValidatorTool(BaseTool):
                 Prompt: {prompt}
                 """
             )
-            # 3. 'reason' – reason for meeting action , "reason": "..."
             return {
                 "intent": data.get("intent", "schedule").lower(),
                 "title": data.get("title", "Schedule Meeting").strip(),
-                # "reason": data.get("reason", "").strip(),
             }
 
         def generate_slots(preferred_half, duration):
@@ -175,7 +173,6 @@ class ValidatorTool(BaseTool):
                             "participant_emails": participants_result[
                                 "participant_emails"
                             ],
-                            # "reason": details["reason"],
                         },
                     }
                 )
@@ -199,7 +196,6 @@ class ValidatorTool(BaseTool):
                         "duration_minutes": parsed["duration_minutes"],
                         "preferred_half": parsed["preferred_half"],
                         "timeslots": slots,
-                        # "reason": details["reason"],
                     },
                 }
             )

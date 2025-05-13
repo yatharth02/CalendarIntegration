@@ -13,10 +13,7 @@ from tasks import (
 
 def kickoff_meeting_prompt_validation(prompt: str):
     """Step 1: Use 3 agents to validate prompt, check calendar, and confirm slot."""
-    validate_task.description = (
-        f"Check if the following prompt is related to Outlook meeting scheduling:\n\n"
-        f'Prompt: "{prompt}"'
-    )
+    validate_task.description = f'Prompt: "{prompt}"'
 
     crew = Crew(
         agents=[validator_agent, calendar_availability_agent],
